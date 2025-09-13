@@ -1,38 +1,44 @@
 import os
 import math
-from typing import List, Dict
+from typing import List, Dict, Optional
 from google import genai
 
-# Attempt to fetch Gemini API key from environment first, else AWS Secrets Manager
+# Model selection
+# Defaults to Gemini Flash 2.x name. You can change via GEMINI_MODEL env var.
+# If you have access to a specific preview like "gemini-2.5-flash", set it there.
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-if not GEMINI_API_KEY:
-    try:
-        import boto3
-        from botocore.exceptions import BotoCoreError, ClientError
-        secrets_client = boto3.client("secretsmanager")
-        secret_name = "prod/gemini/api_key"
-        secret_value = secrets_client.get_secret_value(SecretId=secret_name)
-        # Secret may be in SecretString or binary
-        if "SecretString" in secret_value:
-            GEMINI_API_KEY = secret_value["SecretString"]
-        else:
-            GEMINI_API_KEY = secret_value.get("SecretBinary", b"").decode("utf-8")
-    except Exception as e:
-        raise RuntimeError(f"Unable to retrieve Gemini API key from Secrets Manager: {e}")
+# Global client cache for reuse
+_GLOBAL_CLIENT = None
 
-if not GEMINI_API_KEY:
-    raise RuntimeError("Gemini API key not found in environment or Secrets Manager")
+def get_gemini_client():
+    """Initialize Gemini client with API key from environment"""
+    global _GLOBAL_CLIENT
+    if _GLOBAL_CLIENT:
+        return _GLOBAL_CLIENT
+        
+    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+    
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY env var is required")
+    
+    _GLOBAL_CLIENT = genai.Client(api_key=GEMINI_API_KEY)
+    return _GLOBAL_CLIENT
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+def set_gemini_client(client):
+    """Set a pre-configured client (useful for Lambda)"""
+    global _GLOBAL_CLIENT
+    _GLOBAL_CLIENT = client
 
 # -------------- Prompt helpers --------------
 from prompts import CHUNK_SUMMARY_PROMPT, REDUCE_SUMMARY_PROMPT, CHAT_PROMPT
 
 
-def _call_gemini(contents: List[Dict]) -> str:
+def _call_gemini(contents: List[Dict], client: Optional[genai.Client] = None) -> str:
     """Low-level call using client.models.generate_content; returns text."""
+    if client is None:
+        client = get_gemini_client()
+        
     resp = client.models.generate_content(
         model=GEMINI_MODEL,
         contents=contents,
@@ -71,7 +77,7 @@ def _split_text(text: str, max_chars: int = 20000, overlap: int = 800) -> List[s
     return chunks
 
 
-def summarize_map_reduce(full_text: str, level: str = "LOW") -> str:
+def summarize_map_reduce(full_text: str, level: str = "LOW", client: Optional[genai.Client] = None) -> str:
     """Map-reduce summarization across chunks with a final synthesis.
     level in {LOW, MEDIUM, HIGH}
     """
@@ -84,7 +90,7 @@ def summarize_map_reduce(full_text: str, level: str = "LOW") -> str:
         contents = [
             {"role": "user", "parts": [{"text": prompt}]}
         ]
-        partial = _call_gemini(contents)
+        partial = _call_gemini(contents, client)
         partials.append(partial)
 
     # 2) Reduce step: synthesize into a single coherent summary at the same level
@@ -92,11 +98,11 @@ def summarize_map_reduce(full_text: str, level: str = "LOW") -> str:
     contents = [
         {"role": "user", "parts": [{"text": reduce_prompt}]}
     ]
-    final_summary = _call_gemini(contents)
+    final_summary = _call_gemini(contents, client)
     return final_summary
 
 
-def chat_answer(doc_text: str, history: List[Dict[str, str]], max_context_chars: int = 60000) -> str:
+def chat_answer(doc_text: str, history: List[Dict[str, str]], max_context_chars: int = 60000, client: Optional[genai.Client] = None) -> str:
     """Answer a user question grounded in doc_text and chat history.
 
     history: list of {role: 'user'|'model', text: str}
@@ -114,4 +120,4 @@ def chat_answer(doc_text: str, history: List[Dict[str, str]], max_context_chars:
     for turn in history:
         contents.append({"role": turn["role"], "parts": [{"text": turn["text"]}]})
 
-    return _call_gemini(contents)
+    return _call_gemini(contents, client)

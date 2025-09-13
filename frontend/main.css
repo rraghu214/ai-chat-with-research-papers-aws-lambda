@@ -8,3 +8,13 @@
 }
 .chat-msg { margin-bottom: .5rem; }
 .chat-msg .role { font-weight: 600; margin-right: .35rem; }
+
+.loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.spinner-border-sm {
+  width: 1rem;
+  height: 1rem;
+}
