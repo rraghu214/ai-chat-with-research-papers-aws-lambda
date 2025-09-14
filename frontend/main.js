@@ -1,7 +1,7 @@
 // Configuration - Update these URLs with your actual Lambda Function URLs
 const CONFIG = {
-    SUMMARIZE_URL: 'YOUR_SUMMARIZE_LAMBDA_FUNCTION_URL',
-    CHAT_URL: 'YOUR_CHAT_LAMBDA_FUNCTION_URL'
+    SUMMARIZE_URL: 'https://hx7rwzhjd3xlxqsrzmmxfgx33u0hcdxr.lambda-url.ap-south-1.on.aws/',
+    CHAT_URL: 'https://zhgawn7ggsstdghlnnvs3zwm3m0ggcbp.lambda-url.ap-south-1.on.aws/'
 };
 
 // Session management
