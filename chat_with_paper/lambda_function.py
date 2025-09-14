@@ -116,7 +116,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     
     # Set up CORS headers
     headers = {
-        'Access-Control-Allow-Origin': '*',
+        # 'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Content-Type',
         'Access-Control-Allow-Methods': 'POST, OPTIONS'
     }

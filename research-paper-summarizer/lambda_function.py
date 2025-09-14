@@ -130,7 +130,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     
     # Set up CORS headers - MUST be consistent across all responses
     headers = {
-        'Access-Control-Allow-Origin': '*',
+        # 'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
         'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
         'Access-Control-Max-Age': '86400',  # Cache preflight for 24 hours
