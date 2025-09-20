@@ -101,4 +101,7 @@
 
     ![Main-UI](z_extras\MAIN-UI.png)
 
-    Ref: https://claude.ai/chat/0b159b91-2eb5-44b9-965a-c0142ebc5d08
+    Ref:
+    
+     https://claude.ai/chat/0b159b91-2eb5-44b9-965a-c0142ebc5d08
+     https://chatgpt.com/share/68ce4c52-f848-8010-a465-5edb075e91fa
