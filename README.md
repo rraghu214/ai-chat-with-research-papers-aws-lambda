@@ -1,98 +1,104 @@
-# AI Chat with Research Papers
+# Setup instructions.
 
-This app ingests a research paper URL (arXiv or any PDF/HTML), summarizes it at **LOW / MEDIUM / HIGH** complexity, and offers a **chat interface** grounded in the paper text.
+1. Create a bucket for storing the cache and downloaded research paper with a preferred name (e.g. chat-cache-rraghu214-14092025)
+    - set a lifecycle for objects to expire by 1 hours. This is to optimize the storage
+2. Create gemini key in AWS Secrets Manager
+3. Create Layers
+    Create Layer-1
+    
+    Step-A
+    ```
+    python3 -m pip download \
+      --only-binary=:all: \
+      --platform manylinux2014_x86_64 \
+      --implementation cp \
+      --python-version 312 \
+      -d wheels1 \
+      "boto3" "requests" "beautifulsoup4"
+      ```
 
----
+      ![layer-1-pip-download](z_extras\layer-1-download.png)
 
-## 1) Local Setup
+    Step-B
+    Verify if the wheels are downloaded.
+    ![layer-1-pip-download-verification](z_extras\layer-1-pip-download-verification.png)
 
-```bash
-# 1. Clone
-git clone https://github.com/rraghu214/ai-chat-with-research-papers.git
-cd ai-chat-with-research-papers
+    Step-C
+    ```
+     mkdir -p genai-layer1/python
+     for f in wheels1/*.whl; do
+       unzip -o "$f" -d genai-layer1/python > /dev/null
+     done
+     ```
 
-# 2. Install uv (fast Python package/dependency manager)
-pip install uv
+    Step-D
+    ```
+     zip -r genai-layer1.zip python
+     genai-layer1 $ aws lambda publish-layer-version \
+     >   --layer-name research-paper-layer-1-py312 \
+     >   --region ap-south-1 \
+     >   --description "Google GenAI SDK layer2 (cp312, manylinux2014_x86_64)" \
+     >   --zip-file fileb://genai-layer1.zip \
+     >   --compatible-runtimes python3.12
+     ```
 
-# 3. Sync dependencies from pyproject.toml
-uv sync
+    ![layer-1-publish](z_extras\layer-1-publish.png)
 
-# 4. Set environment variable (replace <GEMINI-KEY> with your key)
-export GEMINI_API_KEY=<GEMINI-KEY>
-
-# 5. Run the app
-uv run python app.py
-
-
-Now open http://localhost:5000
-```
-
-## 2) How it Works (Architecture)
-```
-- **Extraction**: 
-    - `extractors.py` detects arXiv and converts `/abs/` to `/pdf/`. 
-    - If direct PDF, downloads and extracts text via `pdfminer.six`.
-     - If HTML, uses BeautifulSoup to collect paragraphs.
-- **Summarization (Map-Reduce)**: 
-    - `llm.summarize_map_reduce()` splits text into chunk.
-    - Summarizes each with **Gemini Flash** using `client.models.generate_content`.
-    - Synthesizes a final summary with the requested complexity (LOW/MEDIUM/HIGH).
-- **Chat**: 
-    - `/chat` endpoint builds a prompt with clipped paper context + the running chat history.
-    - Calls the same Gemini API to answer questions grounded in the paper.
-- **Caching**: 
-    - In-memory caches store extracted text and per-level summaries.
-    - For production, replace with Redis.
-```
-## 3) Connecting to AWS EC2
-1. Create EC2 instance (Ubuntu 22, t3.micro — free tier is sufficient).
-
-2. Generate PEM key while creating EC2.
-3. On Windows, fix permissions:
-
-```icacls "<ec2-access-key>.pem" /inheritance:r /grant <<username>>:R ```
-
-4. From the directory where .pem file exists:
-```ssh -i <ec2-access-key>.pem ubuntu@<EC2-HOST/IP>```
-5. Update EC2 Security Group:
-   - Go to EC2 → Security Groups → Inbound rules → Edit inbound rules
-   - Add:
-     - Type: Custom TCP
-     - Port: 5000
-     - Source: 0.0.0.0/0 (or restrict to your IP for safety)
-
-## 4) Setup & Run on AWS EC2
-```
-# 1. Install system deps
-sudo apt update && sudo apt -y install python3-venv python3-pip git
-
-# 2. Install uv
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# 3. Add uv to PATH
-export PATH="$HOME/.local/bin:$PATH"
-
-# 4. Clone repo
-git clone https://github.com/rraghu214/ai-chat-with-research-papers.git
-cd ai-chat-with-research-papers
-
-# 5. Sync dependencies
-uv sync
-
-# 6. Set GEMINI API key
-echo 'export GEMINI_API_KEY=<GEMINI-KEY>' >> ~/.bashrc
-source ~/.bashrc
-echo $GEMINI_API_KEY   # should display your key
-
-# 7. Run
-uv run python3 app.py
+    Similarly create layer-2, 3 for  "google-genai" "pdfminer.six" "google-auth" 
 
 
-```
-Now access your app at:
-👉 http://<EC2-HOST/IP>:5000
+4. Lambda function for research-paper-summarizer
+    - create a new function
+    - attach layers
+    - attach policies
+    - create function URL
+    - enable CORS
+        - Expose headers (access-control-allow-origin, access-control-allow-headers, access-control-allow-methods, access-control-max-age, content-type)
+        - Allow headers (access-control-allow-origin, access-control-allow-headers, access-control-allow-methods, access-control-max-age, content-type)
+        - Allow origin *
+        - Allow methods *
+        - Max age 86400
 
-## 5) Notes
-- If your account exposes a newer model string (e.g., `gemini-2.5-flash`), set `GEMINI_MODEL` accordingly. The code uses `client.models.generate_content` exactly as required.
-- For larger PDFs, increase chunk size or switch to a document store + retrieval. For a course assignment, current approach is typically sufficient.
-- Replace in-memory caches with Redis and add auth if exposing publicly.
+        ![CORS-Expose-Headers](z_extras\CORS-Expose-Headers.png)
+
+5. Lambda function for chat_with_paper
+6. Create bucket for hosting the front end.
+    - Go to AWS, create a bucket with a prefered name. (e.g. research-paper-summarizer-rraghu214-13092025)
+    - Upload all the files from frontend folder - index.html, main.css, main.js
+    - Enable static hosting
+
+    ![Static-Hosting](z_extras\Static-Hosting.png)
+
+
+    ![Static-Hosting-Created](z_extras\Static-Hosting-Created.png)
+    
+
+    - Enable bucket policy
+
+    ![Create-Bucket-Policy](z_extras\Create-Bucket-Policy.png)
+
+    ![Created-Bucket-Policy](z_extras\Created-Bucket-Policy.png)
+
+    ![Created-Bucket-Policy-2](z_extras\Created-Bucket-Policy-2.png)
+
+
+ 7. Create a bucket for caching or storing downloaded research papers or chat conv history. (Optional or reuse the above bucket)
+
+8. Test & verify
+    - Test the Lambda endpoint
+
+    ```    
+
+    curl -X OPTIONS \
+    >   -H "Origin: https://research-paper-summarizer-rraghu214-13092025.s3.ap-south-1.amazonaws.com" \
+    >   -H "Access-Control-Request-Method: POST" \
+    >   -H "Access-Control-Request-Headers: Content-Type" \
+    >   -i \
+    >   https://hx7rwzhjd3xlxqsrzmmxfgx33u0hcdxr.lambda-url.ap-south-1.on.aws/
+    ```
+
+    - Test from the UI.
+
+    ![Main-UI](z_extras\MAIN-UI.png)
+
+    Ref: https://claude.ai/chat/0b159b91-2eb5-44b9-965a-c0142ebc5d08
